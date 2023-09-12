@@ -1,177 +1,109 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
-
-contract Verify { 
-    function verifyProof( uint[2] memory, uint[2] memory, uint[2][2] memory, uint[2] memory, uint[2] memory, uint[2] memory, uint[2] memory, uint[2] memory, uint[7] memory) external pure returns (bool){} 
-}
+pragma solidity ^0.8.19;
 
 contract Voting {
-     struct Votes{
-        bytes[] president;
-        bytes[] senator;
-        bytes[] stateGovernor;
-        bytes32 counter;//it keeps tract of number of voter set.
-     }
-     struct DYPUMPINGVoter {
-        address DYAddress;
-        bytes pubKeyToRecover;// The public key that can be used to recover the DY voter's 
-        bytes32 _opMarker;//A bytes32 value that is used to mark the DY voter's operation.
-        bool canVote;//individaual that can vote
-        bool voted;//person voted
-     }
+    uint public participantId;
+    uint public voterNumber;
 
-         struct RealVoter{
-        address realVoterAddress;
-        uint[2] a;//An array of two uint values that stores the values of a.
-        uint[2] a_p;//An array of two uint values that stores the previous values of a.
-        uint[2][2] b;//An array of two uint values that stores the values of b
-        uint[2] b_p;//
-        uint[2] c;
-        uint[2] c_p;
-        uint[2] h;
-        uint[2] k;
-        uint[7] input;//An array of seven uint values that stores the input values.
-        bool voted; // A boolean value that indicates whether the real voter has already voted.
-    }
-     struct Result{
-        uint[] president;//An array of uint values that stores the votes for president.
-        uint[] senator;
-        uint[] stateGovernor;
-        bytes32[] encryptedResult;//An array of bytes32 values that stores the encrypted results of the election.
-        bytes32[] proof;//An array of bytes32 values that stores the proofs of the encrypted results
+    address public voteOrganiser;
 
+    struct Participant {
+        uint gender;
+        uint participantId;
+        uint age;
+        string name;
+        uint voteCount;
+        address _participantAddress;
     }
+
+     address[] public votedVoters;
+   
+    event participantCreate (uint gender,uint participantId,uint age,string name,
+    uint voteCount,address participantAddress);
+
+    address[] public participantAddress;
+    mapping (address => Participant) public participants;
+
+   
+
+    struct Voters {
+         string name;
+        uint votes;
+        uint id;
+        uint voterAllowed;
+        address voterAddress;
+        bool voterVoted;
+    }
+
+    event VoterCreate (uint id,string name,address voterAddress,
+    uint voterAllowed, bool voterVoted, uint votes);
+
+    mapping (address => Voters) public voteData;
+
+    constructor () {
+        voteOrganiser = msg.sender;
+    }
+    function createParticipant(uint _gender, uint _age,
+    string memory _name, address _participantAddress) 
+    public {
+        require(voteOrganiser == msg.sender,"Only voteOrganizer are allowed to create vote participant");
+        participantId++;
+        Participant storage participant =participants[_participantAddress];
+        participant.gender = _gender;
+        participant.age = _age;
+        participant.name = _name;
+        participant.voteCount = 0;
+        participant._participantAddress = _participantAddress;
+        participantAddress.push(_participantAddress);
+        emit participantCreate (_gender, participantId,_age,_name,participant.voteCount, _participantAddress);
+    }
+
+     function getParticipantData(address _participantAddress)
+      public view returns ( uint, string memory, uint, uint, address)  {
+        return (
+
+            participants[_participantAddress].participantId,
+            participants[_participantAddress].name,
+            participants[_participantAddress].age,
+            participants[_participantAddress].voteCount,
+            participants[_participantAddress]._participantAddress
+        );
+    } 
+
+
+    function getParticipantLength() public view returns (uint) {
+        return participantAddress.length;
+    }
+
     
-     DYPUMPINGVoter[] public DYVoterArray;//ay stores the information about all of the dypumping voters in the election. 
-    Votes[] voteArray;
-    RealVoter[] realVoterArray;
-
-     mapping(address => uint) public DYPUMPINGVoters;
-    mapping(address => uint) public votes;
-    mapping(address => uint) public realVoters;
-    
-     address  owner; 
-    address    zkVerifier;// This contract is responsible for verifying the proofs of the encrypted votes.
-    bytes32  ballotIdentifier;
-    bytes  encryptionPublicKey; // better if converted to hex
-    uint  votersCount;
-    uint  votesCount;
-    uint  voteProofs;
-
-
-     constructor (
-        bytes32  _ballotIdentifier, 
-        bytes memory _encryptionPublicKey, 
-        address _zkVerifier
-        ) public {
-        owner = msg.sender;
-        ballotIdentifier = _ballotIdentifier;
-        encryptionPublicKey = _encryptionPublicKey;
-        zkVerifier = _zkVerifier;
+     function getParticipant() public view returns (address[] memory) {
+        return participantAddress;
     }
 
-    
-        function addEphemeralVoter(
-        address _address, 
-        bytes memory _pubKeyToRecover, 
-        bytes32 _opMarker
-        ) public returns(bool){
-        
-        // DYVoterArray.length++; 
-        DYVoterArray[DYVoterArray.length-1].DYAddress = _address;
-        DYVoterArray[DYVoterArray.length-1].pubKeyToRecover = _pubKeyToRecover;
-        DYVoterArray[DYVoterArray.length-1]._opMarker = _opMarker;
-        DYVoterArray[DYVoterArray.length-1].canVote = true;
-        
-        DYPUMPINGVoters[_address] = DYVoterArray.length-1;
-        
-        votersCount+=1;
-        return(true);
+     function vote(address _participantAddress,uint _participantVotersId) public {
+        Voters storage voters = voteData[msg.sender];
+        require(!voters.voterVoted,"You have  voted");
+        require(voters.voterAllowed != 0,"Sorry you are not eligible to vote");
+        voters.voterVoted = true;
+        voters.votes = _participantVotersId;
+        votedVoters.push(_participantAddress);
+        participants[_participantAddress].voteCount += voters.voterAllowed;
     }
 
-      function addVote(
-        bytes[] memory _president, 
-        bytes[] memory _senator, 
-        bytes[] memory _stateGovernor,
-        bytes32 _counter
-        ) public returns(bool){
-        
-        //EphemeralVoter storage sender = ephemeralVoters[msg.sender];
-        DYPUMPINGVoter storage sender = DYVoterArray[DYPUMPINGVoters[msg.sender]];
-        if (sender.voted || !sender.canVote) return(false);
-        
-        // voteArray.length++;
-        voteArray[voteArray.length-1].president = _president;
-        voteArray[voteArray.length-1].senator = _senator;
-        voteArray[voteArray.length-1].stateGovernor = _stateGovernor;
-        voteArray[voteArray.length-1].counter = _counter;
-        
-        votes[msg.sender] = voteArray.length-1;
-        
-        votesCount+=1;
-        
-        sender.voted = true;
-        sender.canVote = false;
-        return(true);
-    }
+     function getVoterData(address _participantAddress) public view returns (uint,string memory,address,uint,uint,bool) {
+        return (
+            voteData[_participantAddress].id,
+            voteData[_participantAddress].name,
+            voteData[_participantAddress].voterAddress,
+            voteData[_participantAddress].voterAllowed,
+            voteData[_participantAddress].votes,
+            voteData[_participantAddress].voterVoted
+        );
+    } 
 
-     function registerVoteProof(
-        uint[2] memory _a,
-        uint[2] memory _a_p,
-        uint[2][2] memory _b,
-        uint[2] memory _b_p,
-        uint[2] memory _c,
-        uint[2] memory _c_p,
-        uint[2] memory _h,
-        uint[2] memory _k,
-        uint[7] memory _input
-        ) public returns (bool){
-        
-        RealVoter storage sender = realVoterArray[realVoters[msg.sender]];
-        if (sender.voted) return(false);
-        
-        Verify verifier = Verify(zkVerifier);
-        if (!verifier.verifyProof(_a, _a_p, _b, _b_p, _c, _c_p, _h, _k, _input)) return (false);
-        
-       // realVoterArray.length++;
-        
-        realVoterArray[realVoterArray.length-1].realVoterAddress = msg.sender;
-        realVoterArray[realVoterArray.length-1].a = _a;
-        realVoterArray[realVoterArray.length-1].a_p = _a_p;
-        realVoterArray[realVoterArray.length-1].b = _b;
-        realVoterArray[realVoterArray.length-1].b_p = _b_p;
-        realVoterArray[realVoterArray.length-1].c = _c;
-        realVoterArray[realVoterArray.length-1].c_p = _c_p;
-        realVoterArray[realVoterArray.length-1].h = _h;
-        realVoterArray[realVoterArray.length-1].k = _k;
-        realVoterArray[realVoterArray.length-1].input = _input;
-        realVoterArray[realVoterArray.length-1].voted = true;
-        
-        realVoters[msg.sender] = realVoterArray.length-1;
-        
-        voteProofs+=1;
-        return(true);
-    }
-        
-    function getEphemeralWallets(uint _index) view public returns(address, bytes memory, bytes32){
-        return(
-            DYVoterArray[_index].DYAddress, 
-            DYVoterArray[_index].pubKeyToRecover, 
-            DYVoterArray[_index]._opMarker
-            );
-    }
-    
-    function getVotes(uint _index) view public returns(bytes[] memory, bytes[] memory, bytes[] memory){
-        return(
-            voteArray[_index].president, 
-            voteArray[_index].senator, 
-            voteArray[_index].stateGovernor
-            );
-    }
-    
+    function getVoterLength() public view returns (uint) {
+        return votedVoters.length;
+    }   
+
+
 }
-
-        
-
-
-
